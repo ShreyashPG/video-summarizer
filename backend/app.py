@@ -3,8 +3,9 @@ import io
 import base64
 import wave
 import traceback
-from flask import Flask
+from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
+from flask_cors import CORS
 from pydub import AudioSegment  # Install using: pip install pydub
 
 from pydub import AudioSegment
@@ -12,12 +13,62 @@ AudioSegment.converter = r"C:\ffmpeg\bin\ffmpeg.exe"  # Explicitly set the path 
 AudioSegment.ffprobe = r"C:\ffmpeg\bin\ffprobe.exe"  # Explicitly set the path to ffprobe
 
 app = Flask(__name__)
+# Update CORS to allow all routes and methods
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000", "methods": ["GET", "POST", "OPTIONS"]}})
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 recognizer = sr.Recognizer()
 recognizer.energy_threshold = 300  # Adjust this value as needed
 recognizer.dynamic_energy_threshold = True
 
+# Mock user database (replace with real database in production)
+users = {}
+
+@app.route('/api/v1/users/register', methods=['POST', 'OPTIONS'])
+def register():
+    if request.method == 'OPTIONS':
+        # Handling preflight request
+        response = jsonify({'message': 'OK'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    name = data.get('name')
+
+    if not username or not password or not name:
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    if username in users:
+        return jsonify({'message': 'Username already exists'}), 400
+
+    users[username] = {'password': password, 'name': name}
+    return jsonify({'message': 'User registered successfully'}), 201
+
+@app.route('/api/v1/users/login', methods=['POST', 'OPTIONS'])
+def login():
+    if request.method == 'OPTIONS':
+        # Handling preflight request
+        response = jsonify({'message': 'OK'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    if username not in users or users[username]['password'] != password:
+        return jsonify({'message': 'Invalid credentials'}), 401
+
+    return jsonify({'message': 'Login successful', 'name': users[username]['name']}), 200
 
 def convert_audio(audio_chunk):
     """Convert WebM/Opus audio to WAV (16-bit PCM, Mono, 16kHz)."""
