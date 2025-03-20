@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import ClosedCaptionOffOutlinedIcon from '@mui/icons-material/ClosedCaptionOffOutlined';
-import ClosedCaptionDisabledOutlinedIcon from '@mui/icons-material/ClosedCaptionDisabledOutlined';
+import ClosedCaptionOffOutlinedIcon from "@mui/icons-material/ClosedCaptionOffOutlined";
+import ClosedCaptionDisabledOutlinedIcon from "@mui/icons-material/ClosedCaptionDisabledOutlined";
 import styles from "../styles/videoComponent.module.css";
 import { IconButton } from "@mui/material";
 export function Speech({ localVideoref, getPermissions, socketRef, username }) {
@@ -38,62 +38,77 @@ export function Speech({ localVideoref, getPermissions, socketRef, username }) {
   useEffect(() => {
     const handleTranscription = (data) => {
       console.log("📝 Transcription received:", data);
-      setTranscription((prev)=>[...prev, data]);
-      console.log("transcription:", transcription);
-      if(data.user === username){
-        setCaptions("");
+      if (data.text && data.text.trim()) {
+        setTranscription((prev) => {
+          const newTranscription = [...prev];
+          // Remove old transcription from the same user
+          const filteredTranscription = newTranscription.filter(
+            (item) => item.user !== data.user
+          );
+          // Add new transcription
+          filteredTranscription.push(data);
+          return filteredTranscription;
+        });
       }
-      else{
-        setCaptions(data.user + ": " + data.text);
-      }
-      console.log("captions:", captions);
     };
 
     socket.on("transcription", handleTranscription);
 
     return () => {
-      socket.off("transcription"); // Cleanup listener
+      socket.off("transcription", handleTranscription);
     };
   }, [socket]);
 
   const startRecording = async () => {
-    console.log("🎤 Started recording");
-    setIsRecording(true);
-    const stream = new MediaStream(localVideoref.current.srcObject.getAudioTracks());
+    try {
+      console.log("🎤 Started recording");
+      setIsRecording(true);
+      const stream = new MediaStream(
+        localVideoref.current.srcObject.getAudioTracks()
+      );
 
-    const recorder = new MediaRecorder(stream, {
-      mimeType: "audio/webm; codecs=opus",
-    });
+      const recorder = new MediaRecorder(stream, {
+        mimeType: "audio/webm; codecs=opus",
+      });
 
-    let webmHeader = null; // Stores the header from the first chunk
+      let webmHeader = null;
 
-    recorder.ondataavailable = async (event) => {
-      const blob = event.data;
-      if (blob.size === 0) return; // Ignore empty blobs
+      recorder.ondataavailable = async (event) => {
+        const blob = event.data;
+        if (blob.size === 0) return;
 
-      const arrayBuffer = await blob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
 
-      // 🔍 Detect silence (all bytes are zero or match previous chunk)
-      if (isSilent(uint8Array)) {
-        console.log("🔇 Silent chunk detected, skipping...");
-        return;
-      }
+        if (isSilent(uint8Array)) {
+          console.log("🔇 Silent chunk detected, skipping...");
+          return;
+        }
 
-      if (!webmHeader) {
-        webmHeader = uint8Array; // Store the first chunk as the WebM header
-      } else {
-        const fullChunk = new Uint8Array(webmHeader.length + uint8Array.length);
-        fullChunk.set(webmHeader, 0);
-        fullChunk.set(uint8Array, webmHeader.length);
+        if (!webmHeader) {
+          webmHeader = uint8Array;
+          console.log("📝 Stored WebM header");
+        } else {
+          const fullChunk = new Uint8Array(
+            webmHeader.length + uint8Array.length
+          );
+          fullChunk.set(webmHeader, 0);
+          fullChunk.set(uint8Array, webmHeader.length);
 
-        const fixedBlob = new Blob([fullChunk], { type: "audio/webm" });
-        sendToServer(fixedBlob);
-      }
-    };
+          const fixedBlob = new Blob([fullChunk], { type: "audio/webm" });
+          console.log(
+            `📤 Sending audio chunk of size: ${fixedBlob.size} bytes`
+          );
+          sendToServer(fixedBlob);
+        }
+      };
 
-    recorder.start(3000); // Record chunks every 3 seconds
-    setMediaRecorder(recorder);
+      recorder.start(2000); // Record chunks every 2 seconds
+      setMediaRecorder(recorder);
+    } catch (error) {
+      console.error("Error starting recording:", error);
+      setIsRecording(false);
+    }
   };
 
   const stopRecording = () => {
@@ -106,38 +121,53 @@ export function Speech({ localVideoref, getPermissions, socketRef, username }) {
 
   function sendToServer(blob) {
     const reader = new FileReader();
-    console.log("📤 Sending audio chunk to server...");
     reader.readAsDataURL(blob);
     reader.onloadend = () => {
       const base64Data = reader.result.split(",")[1];
-      console.log("📤 Sending audio chunk to server... line 88");
-      console.log("this is username and socketId in speech file:", username, socketId);
-      socket.emit("audio-stream", { user: username, audio: base64Data, socketId: socketId });
+      console.log("📤 Sending audio chunk to server...");
+      console.log("User and SocketId:", username, socketId);
+      socket.emit("audio_stream", {
+        // Fixed event name to match backend
+        user: username,
+        audio: base64Data,
+        socketId: socketId,
+      });
     };
   }
 
   function isSilent(chunk) {
-    return chunk.every((byte) => byte === 0); // Simple silence check
+    // Less aggressive silence detection
+    const sum = chunk.reduce((a, b) => a + b, 0);
+    const average = sum / chunk.length;
+    return average < 5;
   }
 
   return (
     <div className="speech-container">
       <div>
-        <IconButton className="record-button" onClick={isRecording ? stopRecording : startRecording}>
-          {isRecording ? <ClosedCaptionDisabledOutlinedIcon /> : <ClosedCaptionOffOutlinedIcon />}
+        <IconButton
+          className="record-button"
+          onClick={isRecording ? stopRecording : startRecording}
+          color={isRecording ? "error" : "primary"}
+        >
+          {isRecording ? (
+            <ClosedCaptionDisabledOutlinedIcon />
+          ) : (
+            <ClosedCaptionOffOutlinedIcon />
+          )}
         </IconButton>
       </div>
-      <div>
-  {transcription.length > 0 ? (
-    transcription.map((item, index) => (
-      <p key={index}>
-        <strong>{item.user}:</strong> {item.text}
-      </p>
-    ))
-  ) : (
-    <p className="placeholder">Captions will appear here...</p>
-  )}
-</div>
+      <div className="transcription-container">
+        {transcription.length > 0 ? (
+          transcription.map((item, index) => (
+            <p key={index} className="transcription-item">
+              <strong>{item.user}:</strong> {item.text}
+            </p>
+          ))
+        ) : (
+          <p className="placeholder">Captions will appear here...</p>
+        )}
+      </div>
     </div>
   );
 }

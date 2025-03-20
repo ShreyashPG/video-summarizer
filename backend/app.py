@@ -9,8 +9,8 @@ from flask_cors import CORS
 from pydub import AudioSegment  # Install using: pip install pydub
 
 from pydub import AudioSegment
-AudioSegment.converter = r"C:\ffmpeg\bin\ffmpeg.exe"  # Explicitly set the path to ffmpeg
-AudioSegment.ffprobe = r"C:\ffmpeg\bin\ffprobe.exe"  # Explicitly set the path to ffprobe
+AudioSegment.converter = r"C:\Users\Lenovo\Downloads\ffmpeg-7.1.1-full_build\ffmpeg-7.1.1-full_build\bin\ffmpeg.exe"  # Explicitly set the path to ffmpeg
+AudioSegment.ffprobe = r"C:\Users\Lenovo\Downloads\ffmpeg-7.1.1-full_build\ffmpeg-7.1.1-full_build\bin\ffprobe.exe"  # Explicitly set the path to ffprobe
 
 app = Flask(__name__)
 # Update CORS to allow all routes and methods
@@ -18,8 +18,10 @@ CORS(app, resources={r"/*": {"origins": "http://localhost:3000", "methods": ["GE
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 recognizer = sr.Recognizer()
-# recognizer.energy_threshold = 300  # Adjust this value as needed
-# recognizer.dynamic_energy_threshold = True
+recognizer.energy_threshold = 300  # Adjust this value as needed
+recognizer.dynamic_energy_threshold = True
+recognizer.pause_threshold = 0.8  # Seconds of silence before considering the phrase complete
+recognizer.phrase_threshold = 0.3  # Minimum seconds of speaking to consider a phrase
 
 # Mock user database (replace with real database in production)
 users = {}
@@ -128,8 +130,10 @@ def convert_audio(audio_chunk):
         # DEBUG: Save raw received file for troubleshooting
         with open("raw_audio.webm", "wb") as debug_file:
             debug_file.write(audio_chunk)
+        print("💾 Saved raw audio as 'raw_audio.webm'")
 
         # Convert WebM to WAV using pydub
+        print("🔄 Converting audio format...")
         audio = AudioSegment.from_file(input_audio, format="webm")
 
         # Skip silent chunks
@@ -137,7 +141,11 @@ def convert_audio(audio_chunk):
             print("🔇 Skipping silent chunk")
             return None
 
+        print(f"📊 Audio stats - Duration: {len(audio)}ms, dBFS: {audio.dBFS}")
+        
+        # Convert to mono, 16kHz, 16-bit PCM
         audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+        print("✅ Audio format converted successfully")
 
         # Save as WAV
         output_audio = io.BytesIO()
@@ -153,13 +161,15 @@ def convert_audio(audio_chunk):
 @socketio.on("connect")
 def handle_connect():
     print("✅ Client connected")
+    socketio.emit("server_message", {"message": "Connected to server"})
 
 @socketio.on("audio_stream")
 def handle_audio(data):
     try:
         user = data.get("user", "Unknown")
         print(f"🎤 Received audio from {user}")
-        socketId=data["socketId"]
+        socketId = data.get("socketId", "Unknown")
+        
         if "audio" not in data or not data["audio"]:
             print("❌ No audio data received")
             return
@@ -181,11 +191,24 @@ def handle_audio(data):
 
         # Recognize speech
         with sr.AudioFile(io.BytesIO(wav_audio)) as source:
+            print("🎯 Starting speech recognition...")
+            # Adjust for ambient noise
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
             audio = recognizer.record(source)
-            text = recognizer.recognize_google(audio)
-
-        print(f"📝 Transcribed Text: {text}")
-        socketio.emit("transcription", {"user": user, "text": text,"socketId":socketId})
+            try:
+                text = recognizer.recognize_google(audio)
+                print(f"📝 Transcribed Text: {text}")
+                if text.strip():  # Only emit if we have non-empty text
+                    socketio.emit("transcription", {"user": user, "text": text, "socketId": socketId})
+                    print(f"✅ Emitted transcription for {user}")
+                else:
+                    print("⚠️ No text was recognized")
+            except sr.UnknownValueError:
+                print("⚠️ Speech recognition could not understand audio")
+            except sr.RequestError as e:
+                print(f"❌ Could not request results from speech recognition service: {e}")
+            except Exception as e:
+                print(f"❌ Error during speech recognition: {e}")
 
     except Exception as e:
         print("❌ Error in audio processing:")
