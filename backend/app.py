@@ -15,8 +15,8 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 recognizer = sr.Recognizer()
-recognizer.energy_threshold = 300  # Adjust this value as needed
-recognizer.dynamic_energy_threshold = True
+# recognizer.energy_threshold = 300  # Adjust this value as needed
+# recognizer.dynamic_energy_threshold = True
 
 
 def convert_audio(audio_chunk):
@@ -82,7 +82,7 @@ def handle_audio(data):
         # Recognize speech
         with sr.AudioFile(io.BytesIO(wav_audio)) as source:
             audio = recognizer.record(source)
-            text = recognizer.recognize_google(audio, show_all=True)
+            text = recognizer.recognize_google(audio)
 
         print(f"📝 Transcribed Text: {text}")
         socketio.emit("transcription", {"user": user, "text": text,"socketId":socketId})
