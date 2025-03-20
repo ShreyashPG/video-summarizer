@@ -62,25 +62,34 @@ export const AuthProvider = ({ children }) => {
 
   const getHistoryOfUser = async () => {
     try {
+      console.log("Fetching user history...");
       let request = await client.get("/get_all_activity", {
         params: {
           token: localStorage.getItem("token"),
         },
       });
+      console.log("History response:", request.data);
       return request.data;
     } catch (err) {
+      console.error(
+        "Error fetching history:",
+        err.response?.data || err.message
+      );
       throw err;
     }
   };
 
   const addToUserHistory = async (meetingCode) => {
     try {
+      console.log("Adding to history:", { meetingCode });
       let request = await client.post("/add_to_activity", {
         token: localStorage.getItem("token"),
         meeting_code: meetingCode,
       });
+      console.log("Add to history response:", request.data);
       return request;
     } catch (e) {
+      console.error("Error adding to history:", e.response?.data || e.message);
       throw e;
     }
   };

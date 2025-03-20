@@ -70,6 +70,55 @@ def login():
 
     return jsonify({'message': 'Login successful', 'name': users[username]['name']}), 200
 
+@app.route('/api/v1/users/add_to_activity', methods=['POST', 'OPTIONS'])
+def add_to_activity():
+    if request.method == 'OPTIONS':
+        # Handling preflight request
+        response = jsonify({'message': 'OK'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+
+    try:
+        data = request.get_json()
+        token = data.get('token')
+        meeting_code = data.get('meeting_code')
+
+        if not token or not meeting_code:
+            return jsonify({'message': 'Missing required fields'}), 400
+
+        # Here you would typically:
+        # 1. Validate the token
+        # 2. Store the meeting code in the user's activity history
+        # For now, we'll just return success
+        return jsonify({'message': 'Activity added successfully'}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@app.route('/api/v1/users/get_all_activity', methods=['GET', 'OPTIONS'])
+def get_all_activity():
+    if request.method == 'OPTIONS':
+        # Handling preflight request
+        response = jsonify({'message': 'OK'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'GET')
+        return response
+
+    try:
+        token = request.args.get('token')
+        if not token:
+            return jsonify({'message': 'Missing token'}), 400
+
+        # Here you would typically:
+        # 1. Validate the token
+        # 2. Get the user's activity history
+        # For now, we'll return an empty list
+        return jsonify({'activities': []}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
 def convert_audio(audio_chunk):
     """Convert WebM/Opus audio to WAV (16-bit PCM, Mono, 16kHz)."""
     try:
